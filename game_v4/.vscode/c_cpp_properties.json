@@ -1,0 +1,22 @@
+{
+    "configurations": [
+        {
+            "name": "Clang",
+            "includePath": [
+                "${workspaceFolder}/**",
+                "C:\\msys64\\clang64\\include"
+            ],
+            "defines": [
+                "_DEBUG",
+                "INCLUDE_SRC"
+            ],
+            "windowsSdkVersion": "10.0.19041.0",
+            "compilerPath": "C:\\msys64\\clang64\\bin\\clang.exe",
+            "cStandard": "c99",
+            "cppStandard": "c++17",
+            "intelliSenseMode": "linux-clang-x64",
+            "mergeConfigurations": false
+        }
+    ],
+    "version": 4
+}
