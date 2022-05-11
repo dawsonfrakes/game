@@ -458,7 +458,8 @@ bool renderer_init(struct WindowToRendererInfo *win)
         }, NULL, &vk.device));
     }
 
-    swapchain_init();
+    if (!swapchain_init())
+        return false;
     LOGTEMP("Image Count: %d", vk.image_count);
 
     // get handles to queues inside our device
@@ -548,7 +549,9 @@ void renderer_update(void)
     vkResetFences(vk.device, 1, vk.in_flight_fences+current_frame);
 
     vkResetCommandBuffer(vk.commandbuffers[current_frame], 0);
-    record_command_buffer(vk.commandbuffers[current_frame], image_index);
+    if (!record_command_buffer(vk.commandbuffers[current_frame], image_index)) {
+        LOGERROR("failed to record command buffer");
+    }
 
     // TODO: check for submission errors
     vkQueueSubmit(vk.graphics_queue, 1, &(VkSubmitInfo) {
