@@ -4,6 +4,7 @@
 #include "log.h"
 #include "gametypes.h"
 #include "fmath.h"
+#include <vulkan/vulkan_core.h>
 
 #if defined(_WIN32)
 #define WIN32_LEAN_AND_MEAN
@@ -408,6 +409,57 @@ static i64 find_memory_type(u32 type_filter, VkMemoryPropertyFlags properties)
     return -1;
 }
 
+static bool create_buffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VkBuffer *buffer, VkDeviceMemory *buffer_memory)
+{
+    VKRETURN(vkCreateBuffer(vk.device, &(VkBufferCreateInfo) {
+        .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+        .size = size,
+        .usage = usage,
+        .sharingMode = VK_SHARING_MODE_EXCLUSIVE
+    }, NULL, buffer));
+
+    VkMemoryRequirements mem_reqs;
+    vkGetBufferMemoryRequirements(vk.device, *buffer, &mem_reqs);
+
+    const i64 mem_type = find_memory_type(mem_reqs.memoryTypeBits, properties);
+    VKASSERT(mem_type != -1, "failed to find suitable memory type");
+
+    VKRETURN(vkAllocateMemory(vk.device, &(VkMemoryAllocateInfo) {
+        .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+        .allocationSize = mem_reqs.size,
+        .memoryTypeIndex = mem_type
+    }, NULL, buffer_memory));
+    VKRETURN(vkBindBufferMemory(vk.device, *buffer, *buffer_memory, 0));
+    return true;
+}
+
+static bool copy_buffer(VkBuffer src, VkBuffer dst, VkDeviceSize size)
+{
+    VkCommandBuffer commandbuffer;
+    VKRETURN(vkAllocateCommandBuffers(vk.device, &(VkCommandBufferAllocateInfo) {
+        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+        .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+        .commandPool = vk.commandpool,
+        .commandBufferCount = 1
+    }, &commandbuffer));
+    VKRETURN(vkBeginCommandBuffer(commandbuffer, &(VkCommandBufferBeginInfo) {
+        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+        .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT
+    }));
+    vkCmdCopyBuffer(commandbuffer, src, dst, 1, &(VkBufferCopy) {
+        .size = size
+    });
+    VKRETURN(vkEndCommandBuffer(commandbuffer));
+    VKRETURN(vkQueueSubmit(vk.graphics_queue, 1, &(VkSubmitInfo) {
+        .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+        .commandBufferCount = 1,
+        .pCommandBuffers = &commandbuffer
+    }, VK_NULL_HANDLE));
+    VKRETURN(vkQueueWaitIdle(vk.graphics_queue));
+    vkFreeCommandBuffers(vk.device, vk.commandpool, 1, &commandbuffer);
+    return true;
+}
+
 bool renderer_init(struct WindowToRendererInfo *win)
 {
     // create our reference to vulkan
@@ -528,31 +580,22 @@ bool renderer_init(struct WindowToRendererInfo *win)
 
     // vertex buffer
     {
-        VKRETURN(vkCreateBuffer(vk.device, &(VkBufferCreateInfo) {
-            .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-            .size = sizeof(vertices),
-            .usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
-            .sharingMode = VK_SHARING_MODE_EXCLUSIVE
-        }, NULL, &vk.vertex_buffer));
+        const VkDeviceSize size = sizeof(vertices);
+        VkBuffer staging_buffer;
+        VkDeviceMemory staging_buffer_memory;
 
-        VkMemoryRequirements mem_reqs;
-        vkGetBufferMemoryRequirements(vk.device, vk.vertex_buffer, &mem_reqs);
-        const i64 mem_type = find_memory_type(mem_reqs.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT|VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-        VKASSERT(mem_type != -1, "failed to find suitable memory type for vertex buffer");
-        VKRETURN(vkAllocateMemory(vk.device, &(VkMemoryAllocateInfo) {
-            .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
-            .allocationSize = mem_reqs.size,
-            .memoryTypeIndex = mem_type
-        }, NULL, &vk.vertex_buffer_memory));
-        VKRETURN(vkBindBufferMemory(vk.device, vk.vertex_buffer, vk.vertex_buffer_memory, 0));
-    }
-
-    // fill vertex buffer
-    {
+        VKASSERT(create_buffer(size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT|VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, &staging_buffer, &staging_buffer_memory), "failed to create staging buffer");
         void *data;
-        VKRETURN(vkMapMemory(vk.device, vk.vertex_buffer_memory, 0, sizeof(vertices), 0, &data));
-            memcpy(data, vertices, sizeof(vertices));
-        vkUnmapMemory(vk.device, vk.vertex_buffer_memory);
+        VKRETURN(vkMapMemory(vk.device, staging_buffer_memory, 0, size, 0, &data));
+            memcpy(data, vertices, size);
+        vkUnmapMemory(vk.device, staging_buffer_memory);
+
+        VKASSERT(create_buffer(size, VK_BUFFER_USAGE_TRANSFER_DST_BIT|VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &vk.vertex_buffer, &vk.vertex_buffer_memory), "failed to create vertex buffer");
+
+        VKASSERT(copy_buffer(staging_buffer, vk.vertex_buffer, size), "failed to copy staging buffer to vertex buffer");
+
+        vkDestroyBuffer(vk.device, staging_buffer, NULL);
+        vkFreeMemory(vk.device, staging_buffer_memory, NULL);
     }
 
     // command buffers
@@ -671,8 +714,8 @@ void renderer_deinit(void)
         vkDestroySemaphore(vk.device, vk.render_complete_semaphores[i], NULL);
         vkDestroySemaphore(vk.device, vk.image_available_semaphores[i], NULL);
     }
-    vkFreeMemory(vk.device, vk.vertex_buffer_memory, NULL);
     vkDestroyBuffer(vk.device, vk.vertex_buffer, NULL);
+    vkFreeMemory(vk.device, vk.vertex_buffer_memory, NULL);
     vkDestroyCommandPool(vk.device, vk.commandpool, NULL);
 
     vkDestroyDevice(vk.device, NULL);
