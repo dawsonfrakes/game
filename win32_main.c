@@ -4,7 +4,9 @@
 #define MIN(A, B) (A) < (B) ? (A) : (B)
 #define CLAMP(V, LOW, HIGH) MAX(LOW, MIN(HIGH, V))
 
+#ifndef INCLUDE_SRC
 #define INCLUDE_SRC
+#endif /* INCLUDE_SRC */
 #include "game.h"
 
 #define WIN32_LEAN_AND_MEAN

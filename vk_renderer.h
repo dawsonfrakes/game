@@ -3,6 +3,7 @@
 
 #include "log.h"
 #include "gametypes.h"
+#include "fmath.h"
 
 #if defined(_WIN32)
 #define WIN32_LEAN_AND_MEAN
@@ -23,6 +24,18 @@ struct WindowToRendererInfo {
     RENDER_INFO_MEMBERS
 };
 
+// hard-coded temp values
+typedef struct Vertex {
+    V3 position;
+    V3 color;
+} Vertex;
+
+const Vertex vertices[] = {
+    {{0.0f, -0.5f}, {1.0f, 0.0f, 0.0f}},
+    {{0.5f, 0.5f}, {0.0f, 1.0f, 0.0f}},
+    {{-0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}}
+};
+
 bool renderer_init(struct WindowToRendererInfo *win);
 void renderer_update(void);
 void renderer_deinit(void);
@@ -37,7 +50,7 @@ static long read_file(const char *filename, u8 **output)
     fseek(f, 0, SEEK_END);
     long len = ftell(f);
     fseek(f, 0, SEEK_SET);
-    *output = malloc(sizeof(u8) * (len + 1));
+    *output = (u8 *) malloc(sizeof(u8) * (len + 1));
     if (!*output) {
         fclose(f);
         return -1;
@@ -267,7 +280,28 @@ static bool swapchain_init(void)
             }
         },
         .pVertexInputState = &(VkPipelineVertexInputStateCreateInfo) {
-            .sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO
+            .sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
+            .vertexBindingDescriptionCount = 1,
+            .vertexAttributeDescriptionCount = 2,
+            .pVertexBindingDescriptions = &(VkVertexInputBindingDescription) {
+                .binding = 0,
+                .stride = sizeof(Vertex),
+                .inputRate = VK_VERTEX_INPUT_RATE_VERTEX
+            },
+            .pVertexAttributeDescriptions = (VkVertexInputAttributeDescription []) {
+                {
+                    .binding = 0,
+                    .location = 0,
+                    .format = VK_FORMAT_R32G32B32_SFLOAT,
+                    .offset = offsetof(Vertex, position)
+                },
+                {
+                    .binding = 0,
+                    .location = 1,
+                    .format = VK_FORMAT_R32G32B32_SFLOAT,
+                    .offset = offsetof(Vertex, color)
+                }
+            }
         },
         .pInputAssemblyState = &(VkPipelineInputAssemblyStateCreateInfo) {
             .sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,

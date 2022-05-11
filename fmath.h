@@ -12,6 +12,10 @@
 #define w(V) V.data[3]
 #define m(M, ROW, COL) M.data[ROW][COL]
 
+typedef struct V3 {
+    float data[3];
+} __attribute__((packed)) V3;
+
 typedef struct V4 {
     float data[4];
 } __attribute__((packed)) V4;
