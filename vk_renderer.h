@@ -32,9 +32,14 @@ typedef struct Vertex {
 } Vertex;
 
 const Vertex vertices[] = {
-    {{0.0f, -0.5f}, {1.0f, 0.0f, 0.0f}},
-    {{0.5f, 0.5f}, {0.0f, 1.0f, 0.0f}},
-    {{-0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}}
+    {{-0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}},
+    {{0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}},
+    {{0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}},
+    {{-0.5f, 0.5f}, {1.0f, 0.0f, 1.0f}}
+};
+
+const u16 indices[] = {
+    0, 1, 2, 2, 3, 0
 };
 
 bool renderer_init(struct WindowToRendererInfo *win);
@@ -93,6 +98,8 @@ global struct VulkanObjects {
     VkCommandPool commandpool;
     VkBuffer vertex_buffer;
     VkDeviceMemory vertex_buffer_memory;
+    VkBuffer index_buffer;
+    VkDeviceMemory index_buffer_memory;
     VkCommandBuffer commandbuffers[MAX_FRAMES_IN_FLIGHT];
     VkSemaphore image_available_semaphores[MAX_FRAMES_IN_FLIGHT];
     VkSemaphore render_complete_semaphores[MAX_FRAMES_IN_FLIGHT];
@@ -598,6 +605,26 @@ bool renderer_init(struct WindowToRendererInfo *win)
         vkFreeMemory(vk.device, staging_buffer_memory, NULL);
     }
 
+    // index buffer
+    {
+        const VkDeviceSize size = sizeof(indices);
+        VkBuffer staging_buffer;
+        VkDeviceMemory staging_buffer_memory;
+
+        VKASSERT(create_buffer(size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT|VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, &staging_buffer, &staging_buffer_memory), "failed to create staging buffer");
+        void *data;
+        VKRETURN(vkMapMemory(vk.device, staging_buffer_memory, 0, size, 0, &data));
+            memcpy(data, indices, size);
+        vkUnmapMemory(vk.device, staging_buffer_memory);
+
+        VKASSERT(create_buffer(size, VK_BUFFER_USAGE_TRANSFER_DST_BIT|VK_BUFFER_USAGE_INDEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &vk.index_buffer, &vk.index_buffer_memory), "failed to create index buffer");
+
+        VKASSERT(copy_buffer(staging_buffer, vk.index_buffer, size), "failed to copy staging buffer to index buffer");
+
+        vkDestroyBuffer(vk.device, staging_buffer, NULL);
+        vkFreeMemory(vk.device, staging_buffer_memory, NULL);
+    }
+
     // command buffers
     {
         VKRETURN(vkAllocateCommandBuffers(vk.device, &(VkCommandBufferAllocateInfo) {
@@ -643,7 +670,8 @@ static bool record_command_buffer(VkCommandBuffer buffer, u32 image_index)
     }, VK_SUBPASS_CONTENTS_INLINE);
     vkCmdBindPipeline(buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, vk.graphics_pipeline);
     vkCmdBindVertexBuffers(buffer, 0, 1, &vk.vertex_buffer, (VkDeviceSize []) {0});
-    vkCmdDraw(buffer, LENGTH(vertices), 1, 0, 0);
+    vkCmdBindIndexBuffer(buffer, vk.index_buffer, 0, VK_INDEX_TYPE_UINT16);
+    vkCmdDrawIndexed(buffer, LENGTH(indices), 1, 0, 0, 0);
     vkCmdEndRenderPass(buffer);
     VKRETURN(vkEndCommandBuffer(buffer));
     return true;
@@ -714,6 +742,8 @@ void renderer_deinit(void)
         vkDestroySemaphore(vk.device, vk.render_complete_semaphores[i], NULL);
         vkDestroySemaphore(vk.device, vk.image_available_semaphores[i], NULL);
     }
+    vkDestroyBuffer(vk.device, vk.index_buffer, NULL);
+    vkFreeMemory(vk.device, vk.index_buffer_memory, NULL);
     vkDestroyBuffer(vk.device, vk.vertex_buffer, NULL);
     vkFreeMemory(vk.device, vk.vertex_buffer_memory, NULL);
     vkDestroyCommandPool(vk.device, vk.commandpool, NULL);
