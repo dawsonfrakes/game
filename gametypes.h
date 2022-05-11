@@ -22,12 +22,4 @@ typedef int32_t i32;
 typedef int64_t i64;
 typedef intptr_t isize;
 
-#ifdef _WIN32
-#include <windef.h>
-struct WindowToRendererInfo {
-    HINSTANCE inst;
-    HWND hwnd;
-};
-#endif
-
 #endif /* GAMETYPES_H */

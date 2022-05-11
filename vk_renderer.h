@@ -4,11 +4,24 @@
 #include "log.h"
 #include "gametypes.h"
 
-#ifdef _WIN32
+#if defined(_WIN32)
+#define WIN32_LEAN_AND_MEAN
 #define VK_USE_PLATFORM_WIN32_KHR
-#endif /* _WIN32 */
+#define CURRENT_SURFACE_EXTENSION_NAME VK_KHR_WIN32_SURFACE_EXTENSION_NAME
+#define RENDER_INFO_MEMBERS HINSTANCE inst; HWND hwnd;
+#elif defined(__linux__)
+#define VK_USE_PLATFORM_XLIB_KHR
+#define CURRENT_SURFACE_EXTENSION_NAME VK_KHR_XLIB_SURFACE_EXTENSION_NAME
+#define RENDER_INFO_MEMBERS Display *dpy; Window win;
+#else
+#error window protocol not defined
+#endif /* _WIN32, __linux__ */
 
 #include <vulkan/vulkan.h>
+
+struct WindowToRendererInfo {
+    RENDER_INFO_MEMBERS
+};
 
 bool renderer_init(struct WindowToRendererInfo *win);
 void renderer_update(void);
@@ -356,20 +369,26 @@ bool renderer_init(struct WindowToRendererInfo *win)
             .apiVersion = VK_API_VERSION_1_0
         },
         .enabledExtensionCount = 2,
-        .ppEnabledExtensionNames = (const char *[]) {VK_KHR_SURFACE_EXTENSION_NAME, VK_KHR_WIN32_SURFACE_EXTENSION_NAME},
+        .ppEnabledExtensionNames = (const char *[]) {VK_KHR_SURFACE_EXTENSION_NAME, CURRENT_SURFACE_EXTENSION_NAME},
         .enabledLayerCount = 1,
         .ppEnabledLayerNames = (const char *[]) {"VK_LAYER_KHRONOS_validation"}
     }, NULL, &vk.instance));
 
     // create a platform-specific surface which we can draw on
     {
-        #ifdef _WIN32
+        #if defined(VK_USE_PLATFORM_WIN32_KHR)
         VKRETURN(vkCreateWin32SurfaceKHR(vk.instance, &(VkWin32SurfaceCreateInfoKHR) {
             .sType = VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR,
             .hinstance = win->inst,
             .hwnd = win->hwnd
         }, NULL, &vk.surface));
-        #endif /* _WIN32 */
+        #elif defined(VK_USE_PLATFORM_XLIB_KHR)
+        VKRETURN(vkCreateXlibSurfaceKHR(vk.instance, &(VkXlibSurfaceCreateInfoKHR) {
+            .sType = VK_STRUCTURE_TYPE_XLIB_SURFACE_CREATE_INFO_KHR,
+            .dpy = win->dpy,
+            .window = win->win
+        }, NULL, &vk.surface));
+        #endif /* VK_USE_PLATFORM_WIN32_KHR, VK_USE_PLATFORM_XLIB_KHR */
     }
 
     // select physical device
