@@ -22,4 +22,9 @@ typedef int32_t i32;
 typedef int64_t i64;
 typedef intptr_t isize;
 
+#define MAX(A, B) (A) > (B) ? (A) : (B)
+#define MIN(A, B) (A) < (B) ? (A) : (B)
+#define CLAMP(V, LOW, HIGH) MAX(LOW, MIN(HIGH, V))
+#define LENGTH(ARRAY) (sizeof(ARRAY) / sizeof((ARRAY)[0]))
+
 #endif /* GAMETYPES_H */

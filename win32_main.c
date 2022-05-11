@@ -1,9 +1,5 @@
 // 2> /dev/null; GAMEROOT="`dirname $0`"; mkdir -p $GAMEROOT/build && for FILE in $GAMEROOT/shaders/*; do glslc $FILE -o $GAMEROOT/build/${FILE##*.}.spv; done && clang -o $GAMEROOT/build/game.exe -std=c99 -Wall -Wextra -Werror=vla -pedantic -Og -ggdb -march=native -ffast-math $0 game.c steam_api64.lib -lvulkan; exit
 
-#define MAX(A, B) (A) > (B) ? (A) : (B)
-#define MIN(A, B) (A) < (B) ? (A) : (B)
-#define CLAMP(V, LOW, HIGH) MAX(LOW, MIN(HIGH, V))
-
 #ifndef INCLUDE_SRC
 #define INCLUDE_SRC
 #endif /* INCLUDE_SRC */

@@ -90,6 +90,8 @@ global struct VulkanObjects {
     VkPipeline graphics_pipeline;
     VkFramebuffer swapchain_framebuffers[MAX_IMAGES];
     VkCommandPool commandpool;
+    VkBuffer vertex_buffer;
+    VkDeviceMemory vertex_buffer_memory;
     VkCommandBuffer commandbuffers[MAX_FRAMES_IN_FLIGHT];
     VkSemaphore image_available_semaphores[MAX_FRAMES_IN_FLIGHT];
     VkSemaphore render_complete_semaphores[MAX_FRAMES_IN_FLIGHT];
@@ -393,6 +395,19 @@ static bool swapchain_reinit(void)
     return swapchain_init();
 }
 
+static i64 find_memory_type(u32 type_filter, VkMemoryPropertyFlags properties)
+{
+    VkPhysicalDeviceMemoryProperties mem_props;
+    vkGetPhysicalDeviceMemoryProperties(vk.pdevice, &mem_props);
+    for (u32 i = 0; i < mem_props.memoryTypeCount; ++i) {
+        if ((type_filter & (1 << i)) && (mem_props.memoryTypes[i].propertyFlags & properties) == properties) {
+            return i;
+        }
+    }
+
+    return -1;
+}
+
 bool renderer_init(struct WindowToRendererInfo *win)
 {
     // create our reference to vulkan
@@ -511,6 +526,35 @@ bool renderer_init(struct WindowToRendererInfo *win)
         }, NULL, &vk.commandpool));
     }
 
+    // vertex buffer
+    {
+        VKRETURN(vkCreateBuffer(vk.device, &(VkBufferCreateInfo) {
+            .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+            .size = sizeof(vertices),
+            .usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+            .sharingMode = VK_SHARING_MODE_EXCLUSIVE
+        }, NULL, &vk.vertex_buffer));
+
+        VkMemoryRequirements mem_reqs;
+        vkGetBufferMemoryRequirements(vk.device, vk.vertex_buffer, &mem_reqs);
+        const i64 mem_type = find_memory_type(mem_reqs.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT|VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+        VKASSERT(mem_type != -1, "failed to find suitable memory type for vertex buffer");
+        VKRETURN(vkAllocateMemory(vk.device, &(VkMemoryAllocateInfo) {
+            .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+            .allocationSize = mem_reqs.size,
+            .memoryTypeIndex = mem_type
+        }, NULL, &vk.vertex_buffer_memory));
+        VKRETURN(vkBindBufferMemory(vk.device, vk.vertex_buffer, vk.vertex_buffer_memory, 0));
+    }
+
+    // fill vertex buffer
+    {
+        void *data;
+        VKRETURN(vkMapMemory(vk.device, vk.vertex_buffer_memory, 0, sizeof(vertices), 0, &data));
+            memcpy(data, vertices, sizeof(vertices));
+        vkUnmapMemory(vk.device, vk.vertex_buffer_memory);
+    }
+
     // command buffers
     {
         VKRETURN(vkAllocateCommandBuffers(vk.device, &(VkCommandBufferAllocateInfo) {
@@ -555,7 +599,8 @@ static bool record_command_buffer(VkCommandBuffer buffer, u32 image_index)
         .pClearValues = &(VkClearValue) {.color={.float32={0.2f, 0.3f, 0.8f, 1.0f}}}
     }, VK_SUBPASS_CONTENTS_INLINE);
     vkCmdBindPipeline(buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, vk.graphics_pipeline);
-    vkCmdDraw(buffer, 3, 1, 0, 0);
+    vkCmdBindVertexBuffers(buffer, 0, 1, &vk.vertex_buffer, (VkDeviceSize []) {0});
+    vkCmdDraw(buffer, LENGTH(vertices), 1, 0, 0);
     vkCmdEndRenderPass(buffer);
     VKRETURN(vkEndCommandBuffer(buffer));
     return true;
@@ -626,6 +671,8 @@ void renderer_deinit(void)
         vkDestroySemaphore(vk.device, vk.render_complete_semaphores[i], NULL);
         vkDestroySemaphore(vk.device, vk.image_available_semaphores[i], NULL);
     }
+    vkFreeMemory(vk.device, vk.vertex_buffer_memory, NULL);
+    vkDestroyBuffer(vk.device, vk.vertex_buffer, NULL);
     vkDestroyCommandPool(vk.device, vk.commandpool, NULL);
 
     vkDestroyDevice(vk.device, NULL);
