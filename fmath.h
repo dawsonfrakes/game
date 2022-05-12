@@ -2,6 +2,9 @@
 #ifndef FMATH_H
 #define FMATH_H
 
+#define PI 3.14159265358979323846f
+#define v3(X, Y, Z) (V3) {{X, Y, Z}}
+#define v3f(XYZ) (V3) {{XYZ, XYZ, XYZ}}
 #define V4FMT "%.6f %.6f %.6f %.6f"
 #define V4EXT(V) x(V), y(V), z(V), w(V)
 #define V4PTR(V) V.data
@@ -146,6 +149,42 @@ M4 m4mul(M4 a, M4 b)
     m(result, 3, 1) = m(a, 3, 0) * m(b, 0, 1) + m(a, 3, 1) * m(b, 1, 1) + m(a, 3, 2) * m(b, 2, 1) + m(a, 3, 3) * m(b, 3, 1);
     m(result, 3, 2) = m(a, 3, 0) * m(b, 0, 2) + m(a, 3, 1) * m(b, 1, 2) + m(a, 3, 2) * m(b, 2, 2) + m(a, 3, 3) * m(b, 3, 2);
     m(result, 3, 3) = m(a, 3, 0) * m(b, 0, 3) + m(a, 3, 1) * m(b, 1, 3) + m(a, 3, 2) * m(b, 2, 3) + m(a, 3, 3) * m(b, 3, 3);
+    return result;
+}
+
+/*
+Translate    * RotateZ                 * RotateX                 * RotateY                 * Scale           = World
+[1, 0, 0, x]   [cos(z), -sin(z), 0, 0]   [1,      0,       0, 0]   [ cos(y), 0, sin(y), 0]   [Sx,  0,  0, 0]   [cos(z) * cos(y) * Sx - sin(z) * sin(x) * sin(y) * Sx, -sin(z) * cos(x) * Sy,                        sin(z) * sin(x) * cos(y) * Sz, x]
+[0, 1, 0, y] * [sin(z),  cos(z), 0, 0] * [0, cos(x), -sin(x), 0] * [      0, 1,      0, 0] * [ 0, Sy,  0, 0] = [sin(z) * cos(y) * Sx + cos(z) * sin(x) * sin(y) * Sx,  cos(z) * cos(x) * Sy, sin(z) * sin(y) * Sz - cos(z) * sin(x) * cos(y) * Sz, y]
+[0, 0, 0, z]   [0,            0, 1, 0]   [0, sin(x),  cos(x), 0]   [-sin(y), 0, cos(y), 0]   [ 0,  0, Sz, 0]   [                               -cos(x) * sin(y) * Sx,           sin(x) * Sy,                                 cos(x) * cos(y) * Sz, z]
+[0, 0, 0, 1]   [0,            0, 0, 1]   [0,       0,      0, 1]   [      0, 0,      0, 1]   [ 0,  0,  0, 1]   [                                                   0,                     0,                                                    0, 1]
+*/
+M4 m4world(V3 translation, V3 rotation, V3 scale)
+{
+    const float cx = cosf(x(rotation));
+    const float sx = sinf(x(rotation));
+    const float cy = cosf(y(rotation));
+    const float sy = sinf(y(rotation));
+    const float cz = cosf(z(rotation));
+    const float sz = sinf(z(rotation));
+
+    M4 result;
+    m(result, 0, 0) = cz * cy * x(scale) - sz * sx * sy * x(scale);
+    m(result, 0, 1) = -sz * cx * y(scale);
+    m(result, 0, 2) = sz * sx * cy * z(scale);
+    m(result, 0, 3) = x(translation);
+    m(result, 1, 0) = sz * cy * x(scale) + cz * sx * sy * x(scale);
+    m(result, 1, 1) = cz * cx * y(scale);
+    m(result, 1, 2) = sz * sy * z(scale) - cz * sx * cy * z(scale);
+    m(result, 1, 3) = y(translation);
+    m(result, 2, 0) = -cx * sy * x(scale);
+    m(result, 2, 1) = sx * y(scale);
+    m(result, 2, 2) = cx * cy * z(scale);
+    m(result, 2, 3) = z(translation);
+    m(result, 3, 0) = 0.0f;
+    m(result, 3, 1) = 0.0f;
+    m(result, 3, 2) = 0.0f;
+    m(result, 3, 3) = 1.0f;
     return result;
 }
 
